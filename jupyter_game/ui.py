@@ -15,13 +15,33 @@ def draw_bar(x, y, w, h, value, max_value, color, reverse=False):
 
 
 
-def draw_back_to_menu_button():
-    rect = pygame.Rect(20, 18, 210, 42)
+def draw_back_to_menu_button(battle=False):
+    rect = pygame.Rect(20, HEIGHT - 92 if battle else 18, 210, 42)
     pygame.draw.rect(screen, (42, 46, 60), rect, border_radius=10)
     pygame.draw.rect(screen, WHITE, rect, 2, border_radius=10)
     txt = SMALL.render("Back to Menu [ESC]", True, WHITE)
     screen.blit(txt, txt.get_rect(center=rect.center))
     return rect
+
+
+def draw_combat_hud(p1, p2, round_timer, right_label='P2'):
+    for fighter, x, reverse, label in ((p1, 70, False, 'P1'),
+                                      (p2, WIDTH - 530, True, right_label)):
+        draw_bar(x, 45, 460, 28, fighter.hp, fighter.max_hp, GREEN if not reverse else RED, reverse)
+        draw_bar(x, 80, 460, 13, fighter.energy, 100, CYAN, reverse)
+        draw_bar(x, 100, 460, 13, fighter.stagger, fighter.max_stagger, ORANGE, reverse)
+        text = SMALL.render(f'{label} {fighter.name} | ENERGY / STAGGER', True, WHITE)
+        screen.blit(text, (x, 120))
+        if fighter.current_move:
+            text = SMALL.render(fighter.moves[fighter.current_move].name, True, fighter.color)
+            screen.blit(text, (x, 145))
+        if fighter.combo_count >= 2:
+            text = FONT.render(f'{fighter.combo_count} HIT COMBO ({fighter.combo_scaling:.0%})', True, YELLOW)
+            screen.blit(text, (x, 175))
+    text = BIG.render(str(max(0, round_timer // FPS)), True, WHITE)
+    screen.blit(text, text.get_rect(center=(WIDTH // 2, 65)))
+    text = SMALL.render('Down+Light > Heavy > Air Light > Air Heavy > Special  |  Down, Down+Special = Utility', True, GRAY)
+    screen.blit(text, text.get_rect(center=(WIDTH // 2, 215)))
 
 
 def draw_background():
@@ -181,12 +201,21 @@ def device_screen(p1_input, p2_input):
             screen.blit(ptxt, ptxt.get_rect(center=(rect.centerx, rect.y + 60)))
             dtxt = FONT.render(device.label[:38], True, WHITE)
             screen.blit(dtxt, dtxt.get_rect(center=(rect.centerx, rect.y + 130)))
-            ctxt = SMALL.render(device.short_controls(), True, GRAY)
-            screen.blit(ctxt, ctxt.get_rect(center=(rect.centerx, rect.y + 180)))
+            words = device.short_controls().split()
+            lines = ['']
+            for word in words:
+                candidate = (lines[-1] + ' ' + word).strip()
+                if SMALL.size(candidate)[0] > rect.width - 30:
+                    lines.append(word)
+                else:
+                    lines[-1] = candidate
+            for line_num, line in enumerate(lines):
+                ctxt = SMALL.render(line, True, GRAY)
+                screen.blit(ctxt, ctxt.get_rect(center=(rect.centerx, rect.y + 180 + 24 * line_num)))
 
         info = SMALL.render("Connect both controllers before launching. ENTER / Controller A = continue", True, (205, 205, 215))
         screen.blit(info, info.get_rect(center=(WIDTH // 2, 555)))
-        refresh = SMALL.render("R = Redetect controllers     ESC = Quit", True, GRAY)
+        refresh = SMALL.render("R = Redetect controllers     ESC = Main Menu", True, GRAY)
         screen.blit(refresh, refresh.get_rect(center=(WIDTH // 2, 600)))
         pygame.display.flip()
 
@@ -195,7 +224,7 @@ def device_screen(p1_input, p2_input):
                 pygame.quit(); sys.exit()
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    pygame.quit(); sys.exit()
+                    return "menu"
                 if event.key == pygame.K_r:
                     return "redetect"
                 if event.key == pygame.K_RETURN:

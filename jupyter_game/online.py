@@ -7,8 +7,9 @@ import time
 from .config import *
 from .roster import LIBRARIES
 from .input_devices import InputDevice
-from .entities import Fighter, Particle
-from .ui import draw_bar, draw_background, draw_back_to_menu_button
+from .entities import Fighter, Projectile
+from .combat import step_battle
+from .ui import draw_background, draw_back_to_menu_button, draw_combat_hud
 
 ONLINE_PORT = 50555
 
@@ -298,6 +299,7 @@ def join_connect_screen():
         while pygame.time.get_ticks() < error_until:
             clock.tick(FPS)
             screen.fill((20, 23, 32))
+            draw_back_to_menu_button()
             title = BIG.render("CONNECTION FAILED", True, RED)
             screen.blit(title, title.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 20)))
             msg = SMALL.render("Check the host IP/port and firewall, then try again.", True, WHITE)
@@ -306,64 +308,54 @@ def join_connect_screen():
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     return None
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    return None
         return None
 
 
+FIGHTER_STATE_FIELDS = (
+    'hp', 'energy', 'facing', 'guard', 'vel_y', 'on_ground', 'hitstun', 'flash',
+    'stagger', 'staggered', 'stagger_timer', 'stagger_protected', 'parry_window',
+    'parry_recovery', 'knocked_down', 'pending_knockdown', 'knockdown_timer', 'wakeup_invulnerability',
+    'combo_count', 'combo_scaling', 'combo_timer', 'current_move', 'move_frame',
+    'notice', 'notice_timer', 'hitstop',
+    'launched', 'juggle_hits', 'juggle_exhausted', 'move_invulnerability', 'parry_duration',
+)
+
+
 def fighter_to_state(f):
-    return {
-        "x": f.rect.x,
-        "y": f.rect.y,
-        "hp": f.hp,
-        "energy": f.energy,
-        "facing": f.facing,
-        "guard": f.guard,
-        "vel_y": f.vel_y,
-        "on_ground": f.on_ground,
-        "attack_cd": f.attack_cd,
-        "special_cd": f.special_cd,
-        "stun": f.stun,
-        "flash": f.flash,
-    }
+    return dict(x=f.rect.x, y=f.rect.y,
+                **{key: getattr(f, key) for key in FIGHTER_STATE_FIELDS})
 
 
 def apply_fighter_state(f, state):
     if not state:
         return
-    f.rect.x = int(state.get("x", f.rect.x))
-    f.rect.y = int(state.get("y", f.rect.y))
-    f.hp = int(state.get("hp", f.hp))
-    f.energy = float(state.get("energy", f.energy))
-    f.facing = int(state.get("facing", f.facing))
-    f.guard = bool(state.get("guard", f.guard))
-    f.vel_y = float(state.get("vel_y", f.vel_y))
-    f.on_ground = bool(state.get("on_ground", f.on_ground))
-    f.attack_cd = int(state.get("attack_cd", f.attack_cd))
-    f.special_cd = int(state.get("special_cd", f.special_cd))
-    f.stun = int(state.get("stun", f.stun))
-    f.flash = int(state.get("flash", f.flash))
+    f.rect.x = int(state.get('x', f.rect.x))
+    f.rect.y = int(state.get('y', f.rect.y))
+    for key in FIGHTER_STATE_FIELDS:
+        if key in state:
+            setattr(f, key, state[key])
 
 
-def gather_online_input(device):
-    keys = pygame.key.get_pressed()
+def projectiles_to_state(projectiles, p1):
+    return [dict(owner=1 if p.owner is p1 else 2, x=p.x, y=p.y,
+                 direction=p.direction, move=next(key for key, move in p.owner.moves.items() if move is p.move)) for p in projectiles]
 
-    if device.kind == "keyboard1":
-        return {
-            "left": bool(keys[pygame.K_a]),
-            "right": bool(keys[pygame.K_d]),
-            "jump": False,
-            "guard": bool(keys[pygame.K_s]),
-            "attack": False,
-            "special": False,
-        }
 
-    return {
-        "left": device.move_x() < 0,
-        "right": device.move_x() > 0,
-        "jump": False,
-        "guard": device.guarding(),
-        "attack": False,
-        "special": False,
-    }
+def apply_projectiles_state(states, p1, p2):
+    result = []
+    for state in states:
+        owner = p1 if state['owner'] == 1 else p2
+        projectile = Projectile(owner, state['direction'], owner.moves[state.get('move', 'special')])
+        projectile.x, projectile.y = state['x'], state['y']
+        projectile.rect.center = (int(projectile.x), int(projectile.y))
+        result.append(projectile)
+    return result
+
+
+def gather_online_input(device, events=(), facing=1):
+    return device.battle_state(events, facing)
 
 
 def online_character_select(peer):
@@ -458,188 +450,66 @@ def online_character_select(peer):
 
 
 def online_battle(peer, p1_index, p2_index):
-    """
-    Host-authoritative networking:
-    - Host simulates the battle.
-    - Both machines send local input.
-    - Host broadcasts authoritative fighter state.
-    """
-    local_is_p1 = peer.is_host
-    local_device = InputDevice("keyboard1", label="Keyboard")
-
+    """Host runs the same combat simulation as local play; client renders snapshots."""
+    local_device = InputDevice('keyboard1', label='Keyboard')
     p1 = Fighter(LIBRARIES[p1_index], 250, 1, local_device)
     p2 = Fighter(LIBRARIES[p2_index], WIDTH - 320, -1, local_device)
-
-    projectiles = []
-    particles = []
+    projectiles, particles = [], []
     round_timer = 99 * FPS
     winner = None
-
-    local_edge = {"jump": False, "attack": False, "special": False}
-
     while True:
         clock.tick(FPS)
-
-        input_state = gather_online_input(local_device)
-
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
+        events = pygame.event.get()
+        for event in events:
+            if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
                 peer.close()
-                return "menu"
-
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    peer.close()
-                    return "menu"
-                if event.key == pygame.K_w:
-                    input_state["jump"] = True
-                elif event.key == pygame.K_j:
-                    input_state["attack"] = True
-                elif event.key == pygame.K_k:
-                    input_state["special"] = True
-
+                return 'menu'
+        input_state = gather_online_input(local_device, events, p1.facing if peer.is_host else p2.facing)
         peer.send_input(input_state)
-
         if not peer.connected:
-            return "menu"
-
+            return 'menu'
         if peer.is_host:
-            remote_input = peer.get_remote_input()
-
-            def apply_input(fighter, opponent, state):
-                fighter.guard = bool(state.get("guard", False))
-                if fighter.stun <= 0:
-                    move = (-1 if state.get("left") else 0) + (1 if state.get("right") else 0)
-                    if move:
-                        fighter.rect.x += move * fighter.speed
-                        fighter.facing = 1 if move > 0 else -1
-
-                    if state.get("jump"):
-                        fighter.jump()
-                    if state.get("attack"):
-                        fighter.normal_attack(opponent, particles)
-                    if state.get("special"):
-                        fighter.special(projectiles)
-
-                # Timers / physics
-                if fighter.attack_cd > 0:
-                    fighter.attack_cd -= 1
-                if fighter.special_cd > 0:
-                    fighter.special_cd -= 1
-                if fighter.stun > 0:
-                    fighter.stun -= 1
-                if fighter.flash > 0:
-                    fighter.flash -= 1
-                if fighter.combo_timer > 0:
-                    fighter.combo_timer -= 1
-                else:
-                    fighter.combo = 0
-
-                fighter.vel_y += 0.7
-                fighter.rect.y += int(fighter.vel_y)
-                if fighter.rect.bottom >= GROUND_Y:
-                    fighter.rect.bottom = GROUND_Y
-                    fighter.vel_y = 0
-                    fighter.on_ground = True
-
-                fighter.rect.x = max(10, min(WIDTH - fighter.rect.width - 10, fighter.rect.x))
-
-            if local_is_p1:
-                apply_input(p1, p2, input_state)
-                apply_input(p2, p1, remote_input)
-            else:
-                apply_input(p1, p2, remote_input)
-                apply_input(p2, p1, input_state)
-
-            if p1.rect.colliderect(p2.rect):
-                overlap = min(p1.rect.right, p2.rect.right) - max(p1.rect.left, p2.rect.left)
-                if overlap > 0:
-                    if p1.rect.centerx < p2.rect.centerx:
-                        p1.rect.x -= overlap // 2
-                        p2.rect.x += overlap // 2
+            if not winner:
+                step_battle(p1, p2, projectiles, particles, input_state, peer.get_remote_input())
+                round_timer -= 1
+                if p1.hp <= 0 or p2.hp <= 0 or round_timer <= 0:
+                    if p1.hp == p2.hp:
+                        winner = 'DRAW'
+                    elif p1.hp > p2.hp:
+                        winner = f'P1 {p1.name}'
                     else:
-                        p1.rect.x += overlap // 2
-                        p2.rect.x -= overlap // 2
-
-            for proj in projectiles:
-                proj.update()
-                target = p2 if proj.owner is p1 else p1
-                if proj.alive and proj.rect.colliderect(target.rect):
-                    target.hurt(proj.damage, proj.owner.facing * 20)
-                    proj.owner.energy = min(100, proj.owner.energy + 8)
-                    proj.alive = False
-
-            projectiles[:] = [p for p in projectiles if p.alive]
-
-            for pt in particles:
-                pt.update()
-            particles[:] = [pt for pt in particles if pt.life > 0]
-
-            round_timer -= 1
-
-            if p1.hp <= 0 or p2.hp <= 0 or round_timer <= 0:
-                if p1.hp == p2.hp:
-                    winner = "DRAW"
-                elif p1.hp > p2.hp:
-                    winner = f"P1 {p1.name}"
-                else:
-                    winner = f"P2 {p2.name}"
-
-            peer.send_state({
-                "p1": fighter_to_state(p1),
-                "p2": fighter_to_state(p2),
-                "timer": round_timer,
-                "winner": winner,
-            })
-
+                        winner = f'P2 {p2.name}'
+            peer.send_state(dict(p1=fighter_to_state(p1), p2=fighter_to_state(p2),
+                                 projectiles=projectiles_to_state(projectiles, p1),
+                                 timer=round_timer, winner=winner))
         else:
             state = peer.get_state()
             if state:
-                apply_fighter_state(p1, state.get("p1"))
-                apply_fighter_state(p2, state.get("p2"))
-                round_timer = int(state.get("timer", round_timer))
-                winner = state.get("winner")
-
+                apply_fighter_state(p1, state.get('p1'))
+                apply_fighter_state(p2, state.get('p2'))
+                projectiles = apply_projectiles_state(state.get('projectiles', []), p1, p2)
+                round_timer = int(state.get('timer', round_timer))
+                winner = state.get('winner')
         draw_background()
-        draw_back_to_menu_button()
-
-        draw_bar(70, 45, 460, 28, p1.hp, p1.max_hp, GREEN)
-        draw_bar(WIDTH - 530, 45, 460, 28, p2.hp, p2.max_hp, RED, True)
-        draw_bar(70, 80, 300, 13, p1.energy, 100, CYAN)
-        draw_bar(WIDTH - 370, 80, 300, 13, p2.energy, 100, CYAN, True)
-
-        n1 = FONT.render(f"P1  {p1.name}", True, WHITE)
-        n2 = FONT.render(f"{p2.name}  P2", True, WHITE)
-        screen.blit(n1, (70, 105))
-        screen.blit(n2, (WIDTH - 70 - n2.get_width(), 105))
-
-        time_txt = BIG.render(str(max(0, round_timer // FPS)), True, WHITE)
-        screen.blit(time_txt, time_txt.get_rect(center=(WIDTH // 2, 65)))
-
+        draw_combat_hud(p1, p2, round_timer)
         p1.draw(screen)
         p2.draw(screen)
-
-        for proj in projectiles:
-            proj.draw(screen)
-        for pt in particles:
-            pt.draw(screen)
-
-        net = SMALL.render(
-            "ONLINE HOST" if peer.is_host else "ONLINE CLIENT",
-            True, CYAN
-        )
-        screen.blit(net, net.get_rect(center=(WIDTH // 2, 140)))
-
+        for projectile in projectiles:
+            projectile.draw(screen)
+        for particle in particles:
+            particle.draw(screen)
+        text = SMALL.render('ONLINE HOST' if peer.is_host else 'ONLINE CLIENT', True, CYAN)
+        screen.blit(text, text.get_rect(center=(WIDTH // 2, 140)))
+        hint = SMALL.render(local_device.short_controls(), True, WHITE)
+        screen.blit(hint, hint.get_rect(center=(WIDTH // 2, HEIGHT - 25)))
         if winner:
             overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 165))
             screen.blit(overlay, (0, 0))
-            result = "DRAW!" if winner == "DRAW" else f"{winner} WINS!"
-            txt = TITLE.render(result, True, YELLOW)
-            screen.blit(txt, txt.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 35)))
-            msg = FONT.render("ESC = Main Menu", True, WHITE)
-            screen.blit(msg, msg.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 45)))
-
+            result = 'DRAW!' if winner == 'DRAW' else f'{winner} WINS!'
+            text = TITLE.render(result, True, YELLOW)
+            screen.blit(text, text.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 35)))
+        draw_back_to_menu_button(battle=True)
         pygame.display.flip()
 
 
@@ -656,13 +526,14 @@ def run_online_multiplayer():
             peer = join_connect_screen()
 
         if not peer:
-            continue
+            return
 
         selection = online_character_select(peer)
         if selection is None:
             peer.close()
-            continue
+            return
 
         p1_index, p2_index = selection
         online_battle(peer, p1_index, p2_index)
         peer.close()
+        return
