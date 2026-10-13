@@ -2,10 +2,10 @@ import pygame
 import random
 import math
 
-from .config import *
-from .combat import (moves_for, COMBO_SCALING, INPUT_BUFFER_FRAMES,
-                     PARRY_FRAMES, PERFECT_PARRY_FRAMES, MAX_JUGGLE_HITS)
-from .combat_input import COMMANDS
+from jupyter_game.core.config import *
+from jupyter_game.combat.moves import moves_for, COMBO_SCALING, INPUT_BUFFER_FRAMES, PARRY_FRAMES, PERFECT_PARRY_FRAMES, MAX_JUGGLE_HITS
+from jupyter_game.input.commands import COMMANDS
+from jupyter_game.audio.effects import cue
 
 class Particle:
     def __init__(self, x, y, color):
@@ -102,6 +102,7 @@ class Fighter:
         self.move_x = 0
         self.notice = ''
         self.notice_timer = 0
+        self.show_hitboxes = False
 
     @property
     def combo(self):
@@ -226,6 +227,7 @@ class Fighter:
         self.parry_success = False
         self.move_invulnerability = move.invulnerable_frames
         self.guard = move.guard_frames > 0
+        cue('attack')
         return True
 
     def advance(self, opponent, projectiles, particles):
@@ -334,6 +336,7 @@ class Fighter:
             attacker.rect.x -= direction * 10
             attacker.add_stagger(40 if perfect else 25)
             self.announce('PERFECT PARRY!' if perfect else 'PARRY!')
+            cue('parry')
             return 'parry'
         counter = bool(self.current_move and self.move_frame < self.moves[self.current_move].startup)
         if defending:
@@ -382,6 +385,7 @@ class Fighter:
         self.flash = 6
         for _ in range(10):
             particles.append(Particle(self.rect.centerx, self.rect.centery, YELLOW))
+        cue('guard' if defending else 'hit')
         return 'guard' if defending else 'hit'
 
     def draw(self, surf):
@@ -396,12 +400,21 @@ class Fighter:
         pygame.draw.circle(surf, BLACK, (ex1, eye_y), 4)
         pygame.draw.circle(surf, BLACK, (ex2, eye_y), 4)
         arm_y = self.rect.y + 62
-        pygame.draw.line(surf, body_color, (self.rect.centerx, arm_y), (self.rect.centerx + self.facing * 45, arm_y - 6), 12)
+        extension = 45
+        if self.current_move:
+            move = self.moves[self.current_move]
+            if self.move_frame < move.startup:
+                extension = 24
+            elif self.move_frame < move.startup + move.active:
+                extension = min(95, 45 + move.reach // 2)
+            else:
+                extension = 35
+        pygame.draw.line(surf, body_color, (self.rect.centerx, arm_y), (self.rect.centerx + self.facing * extension, arm_y - 6), 12)
         txt = SMALL.render(self.name, True, WHITE)
         surf.blit(txt, txt.get_rect(center=(self.rect.centerx, self.rect.y - 18)))
         if self.guard:
             pygame.draw.arc(surf, CYAN, self.rect.inflate(28, 12), math.radians(-80), math.radians(80), 5)
-        if self.current_move:
+        if self.current_move and self.show_hitboxes:
             move = self.moves[self.current_move]
             if not move.utility and move.startup <= self.move_frame < move.startup + move.active:
                 x = self.rect.right if self.facing == 1 else self.rect.left - move.reach

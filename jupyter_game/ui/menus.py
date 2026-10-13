@@ -1,64 +1,13 @@
+"""Main menu, fighter selection, and local device screens."""
 import pygame
 import sys
-
-from .config import *
-from .roster import LIBRARIES
-
-def draw_bar(x, y, w, h, value, max_value, color, reverse=False):
-    pygame.draw.rect(screen, (45, 45, 55), (x, y, w, h), border_radius=7)
-    fw = int(w * max(0, value) / max_value)
-    if reverse:
-        pygame.draw.rect(screen, color, (x + w - fw, y, fw, h), border_radius=7)
-    else:
-        pygame.draw.rect(screen, color, (x, y, fw, h), border_radius=7)
-    pygame.draw.rect(screen, WHITE, (x, y, w, h), 2, border_radius=7)
-
-
-
-def draw_back_to_menu_button(battle=False):
-    rect = pygame.Rect(20, HEIGHT - 92 if battle else 18, 210, 42)
-    pygame.draw.rect(screen, (42, 46, 60), rect, border_radius=10)
-    pygame.draw.rect(screen, WHITE, rect, 2, border_radius=10)
-    txt = SMALL.render("Back to Menu [ESC]", True, WHITE)
-    screen.blit(txt, txt.get_rect(center=rect.center))
-    return rect
-
-
-def draw_combat_hud(p1, p2, round_timer, right_label='P2'):
-    for fighter, x, reverse, label in ((p1, 70, False, 'P1'),
-                                      (p2, WIDTH - 530, True, right_label)):
-        draw_bar(x, 45, 460, 28, fighter.hp, fighter.max_hp, GREEN if not reverse else RED, reverse)
-        draw_bar(x, 80, 460, 13, fighter.energy, 100, CYAN, reverse)
-        draw_bar(x, 100, 460, 13, fighter.stagger, fighter.max_stagger, ORANGE, reverse)
-        text = SMALL.render(f'{label} {fighter.name} | ENERGY / STAGGER', True, WHITE)
-        screen.blit(text, (x, 120))
-        if fighter.current_move:
-            text = SMALL.render(fighter.moves[fighter.current_move].name, True, fighter.color)
-            screen.blit(text, (x, 145))
-        if fighter.combo_count >= 2:
-            text = FONT.render(f'{fighter.combo_count} HIT COMBO ({fighter.combo_scaling:.0%})', True, YELLOW)
-            screen.blit(text, (x, 175))
-    text = BIG.render(str(max(0, round_timer // FPS)), True, WHITE)
-    screen.blit(text, text.get_rect(center=(WIDTH // 2, 65)))
-    text = SMALL.render('Down+Light > Heavy > Air Light > Air Heavy > Special  |  Down, Down+Special = Utility', True, GRAY)
-    screen.blit(text, text.get_rect(center=(WIDTH // 2, 215)))
-
-
-def draw_background():
-    screen.fill((24, 28, 40))
-    for i in range(0, HEIGHT, 40):
-        pygame.draw.line(screen, (31, 36, 50), (0, i), (WIDTH, i))
-    for i in range(0, WIDTH, 80):
-        pygame.draw.line(screen, (28, 33, 47), (i, 0), (i, HEIGHT))
-    pygame.draw.circle(screen, (235, 120, 40), (WIDTH // 2, 160), 55, 5)
-    pygame.draw.arc(screen, (245, 190, 130), (WIDTH // 2 - 105, 110, 210, 100), 0.2, 2.9, 4)
-    pygame.draw.rect(screen, (50, 54, 65), (0, GROUND_Y, WIDTH, HEIGHT - GROUND_Y))
-    pygame.draw.line(screen, WHITE, (0, GROUND_Y), (WIDTH, GROUND_Y), 3)
-
+from jupyter_game.core.config import *
+from jupyter_game.data.roster import LIBRARIES
+from jupyter_game.ui.rendering import draw_back_to_menu_button, back_clicked
 
 
 def main_menu():
-    options = ["SINGLE PLAYER", "MULTIPLAYER", "ONLINE MULTIPLAYER", "QUIT"]
+    options = ["SINGLE PLAYER", "MULTIPLAYER", "ONLINE MULTIPLAYER", "TRAINING", "SETTINGS", "QUIT"]
     selected = 0
 
     while True:
@@ -71,7 +20,7 @@ def main_menu():
         screen.blit(subtitle, subtitle.get_rect(center=(WIDTH // 2, 180)))
 
         for i, option in enumerate(options):
-            rect = pygame.Rect(WIDTH // 2 - 210, 255 + i * 82, 420, 60)
+            rect = pygame.Rect(WIDTH // 2 - 210, 235 + i * 65, 420, 55)
             if i == selected:
                 pygame.draw.rect(screen, ORANGE, rect, border_radius=14)
                 color = BLACK
@@ -91,6 +40,10 @@ def main_menu():
         pygame.display.flip()
 
         for event in pygame.event.get():
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                for i, option in enumerate(options):
+                    if pygame.Rect(WIDTH // 2 - 210, 235 + i * 65, 420, 55).collidepoint(event.pos):
+                        return option
             if event.type == pygame.QUIT:
                 return "QUIT"
 
@@ -114,7 +67,7 @@ def main_menu():
                 return options[selected]
 
 
-def single_player_select():
+def single_player_select(title_label='SINGLE PLAYER'):
     index = 0
     cols = 6
 
@@ -122,7 +75,7 @@ def single_player_select():
         clock.tick(FPS)
         screen.fill((20, 23, 32))
 
-        title = TITLE.render("SINGLE PLAYER", True, ORANGE)
+        title = TITLE.render(title_label, True, ORANGE)
         subtitle = FONT.render("CHOOSE YOUR LIBRARY", True, WHITE)
         screen.blit(title, title.get_rect(center=(WIDTH // 2, 60)))
         screen.blit(subtitle, subtitle.get_rect(center=(WIDTH // 2, 115)))
@@ -161,10 +114,17 @@ def single_player_select():
         pygame.display.flip()
 
         for event in pygame.event.get():
+            if back_clicked(event):
+                return None
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
 
+            if event.type == pygame.JOYBUTTONDOWN and event.button in (0, 7):
+                return index
+            if event.type == pygame.JOYHATMOTION:
+                x, y = event.value
+                index = (index + x - y * cols) % len(LIBRARIES)
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     return None
@@ -220,6 +180,8 @@ def device_screen(p1_input, p2_input):
         pygame.display.flip()
 
         for event in pygame.event.get():
+            if back_clicked(event):
+                return 'menu'
             if event.type == pygame.QUIT:
                 pygame.quit(); sys.exit()
             if event.type == pygame.KEYDOWN:
@@ -241,6 +203,8 @@ def select_screen(p1_input, p2_input):
     while True:
         clock.tick(FPS)
         for event in pygame.event.get():
+            if back_clicked(event):
+                return None
             if event.type == pygame.QUIT:
                 pygame.quit(); sys.exit()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
@@ -272,8 +236,8 @@ def select_screen(p1_input, p2_input):
                 else: p2_index = index
 
         if p1_ready and p2_ready:
-            pygame.time.delay(250)
             return p1_index, p2_index
+
 
         screen.fill((20, 23, 32))
         title = TITLE.render("JUPYTER", True, ORANGE)

@@ -7,13 +7,12 @@ import json
 from unittest.mock import patch
 import pygame
 
-from jupyter_game.combat import step_battle, MAX_JUGGLE_HITS
-from jupyter_game.combat_input import CommandDetector
-from jupyter_game.entities import Fighter, Projectile
-from jupyter_game.input_devices import InputDevice
-from jupyter_game.roster import LIBRARIES
-from jupyter_game.online import (fighter_to_state, apply_fighter_state,
-                                 projectiles_to_state, apply_projectiles_state)
+from jupyter_game.combat.moves import step_battle, MAX_JUGGLE_HITS
+from jupyter_game.input.commands import CommandDetector
+from jupyter_game.combat.entities import Fighter, Projectile
+from jupyter_game.input.devices import InputDevice
+from jupyter_game.data.roster import LIBRARIES
+from jupyter_game.networking.snapshots import fighter_to_state, apply_fighter_state, projectiles_to_state, apply_projectiles_state
 
 
 def fighter(name='NumPy', x=300, facing=1):

@@ -1,10 +1,13 @@
 import pygame
 import sys
+import random
 
-from .ui import main_menu, single_player_select, device_screen, select_screen
-from .input_devices import detect_devices
-from .local_modes import battle, battle_single_player
-from .online import run_online_multiplayer
+from jupyter_game.ui.menus import main_menu, single_player_select, device_screen, select_screen
+from jupyter_game.input.devices import detect_devices
+from jupyter_game.modes.local import battle, battle_single_player
+from jupyter_game.modes.online import run_online_multiplayer
+from jupyter_game.ui.settings import settings_screen
+from jupyter_game.data.roster import LIBRARIES
 
 def main():
     while True:
@@ -13,6 +16,16 @@ def main():
         if choice == "QUIT":
             pygame.quit()
             sys.exit()
+
+        if choice == 'SETTINGS':
+            settings_screen()
+            continue
+        if choice == 'TRAINING':
+            from jupyter_game.modes.training import training
+            index = single_player_select('TRAINING')
+            if index is not None:
+                training(index)
+            continue
 
         if choice == "SINGLE PLAYER":
             return_to_menu = False
@@ -23,8 +36,10 @@ def main():
                 if player_index is None:
                     break
 
+                opponent_index = random.choice([i for i in range(len(LIBRARIES)) if i != player_index])
+
                 while True:
-                    result = battle_single_player(player_index)
+                    result = battle_single_player(player_index, opponent_index)
 
                     if result == "rematch":
                         continue

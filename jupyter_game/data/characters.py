@@ -3,6 +3,45 @@ from dataclasses import replace
 
 
 PROFILES = {
+    'Pandas': {
+        'names': ('Series Jab', 'Index Crush', 'DataFrame Slam', 'Row Sweep',
+                  'Pivot Launch', 'Join Advance', 'Air Series', 'Column Drop',
+                  'Air DataFrame', 'GroupBy Smash', 'Schema Guard', 'Index Dash'),
+        'stagger': 1.2, 'startup': 1,
+        'changes': {
+            'special': dict(projectile=False, reach=140, guard_damage=28, damage=29),
+            'directional_special': dict(projectile=False, reach=110, launch_velocity=-13,
+                                        self_launch=-11, guard_damage=24),
+            'utility': dict(dash_speed=0, invulnerable_frames=0, guard_frames=20,
+                            parry_frames=4, active=20, recovery=18),
+        },
+    },
+    'PyTorch': {
+        'names': ('Tensor Jab', 'Gradient Kick', 'Tensor Flame', 'Autograd Sweep',
+                  'Backward Launch', 'Graph Advance', 'Air Tensor', 'Gradient Drop',
+                  'Air Tensor Flame', 'Flame Fan', 'Graph Escape', 'Tensor Dash'),
+        'stagger': 1.1, 'startup': 0,
+        'changes': {
+            'special': dict(projectile_speed=14, damage=27),
+            'directional_special': dict(projectile_count=3, projectile_spread=30,
+                                        projectile_vy=-2, damage=15, stagger_damage=12),
+            'air_special': dict(projectile_vy=4, projectile_speed=12),
+            'utility': dict(dash_speed=8, invulnerable_frames=12, recovery=22),
+        },
+    },
+    'Requests': {
+        'names': ('GET Jab', 'POST Kick', 'HTTP Rush', 'Header Sweep',
+                  'Redirect Launch', 'Request Advance', 'Air GET', 'Response Drop',
+                  'Air HTTP', 'Retry Rush', 'Timeout Escape', 'Keepalive Dash'),
+        'stagger': .8, 'startup': -1,
+        'changes': {
+            'special': dict(projectile=False, dash_speed=8, active=5, reach=85, damage=24),
+            'directional_special': dict(projectile=False, dash_speed=9, active=5,
+                                        reach=90, launch_velocity=-10, self_launch=-9),
+            'utility': dict(dash_speed=-14, invulnerable_frames=10),
+            'dash': dict(dash_speed=13),
+        },
+    },
     'NumPy': {
         'names': ('Vector Jab', 'Matrix Kick', 'Array Burst', 'Scalar Sweep',
                   'Axis Launch', 'Matrix Advance', 'Air Vector', 'Air Matrix',

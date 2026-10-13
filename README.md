@@ -12,6 +12,30 @@ A Pygame fighting game where Python libraries fight each other.
 - Online Multiplayer
   - LAN / direct IP host and join
   - TCP port `50555`
+- Training: dummy behaviors, combo damage, input history, hitboxes, move list, and drills.
+- Settings: CPU difficulty, preferred controller/keyboard, deadzone, key bindings, and sound.
+
+## Matches and practice
+
+Local and online matches use best-of-three rounds. KO wins a round; timeout compares
+remaining HP percentage. Draws replay the round without awarding a win. CPU rematches
+keep the same opponent. Combat runs at 60 simulation ticks per second independently
+of drawing. Long stalls cap catch-up at eight ticks and discard excess elapsed time.
+
+- Local: `P` or controller Start pauses; `P`/Enter/Start resumes. `Q` opens quit
+  confirmation, `Y` quits, `N` stays. Esc or the Back button opens pause.
+- `F3` shows update/drawing time and frame-work p95 during local matches.
+- Training: `F5` resets, `F6` cycles idle/guard/timed attack/jump dummy, `F7` toggles
+  infinite energy, `F8` toggles hitboxes, Tab shows the move list, Esc exits.
+- Online result: `R`/controller A requests rematch; Enter/controller B requests
+  fighter selection. Both players must choose; selection takes priority if choices
+  differ. Esc leaves. Online matches continue while menus are absent; no online pause.
+
+Settings apply to new input devices. Choose Save to persist preferences in
+`%LOCALAPPDATA%/JupyterBrawl/settings.json` on Windows. `JUPYTER_SETTINGS_PATH` can
+override the file location. Missing preferred controllers fall back to keyboard.
+Disconnected local controllers pause the game; `K` switches affected players to
+keyboard. An online controller disconnect ends the session with a message.
 
 ## Run
 
@@ -60,10 +84,12 @@ New routes and commands:
 - A launched opponent can take four follow-up hits before juggle protection forces landing,
   knockdown, and wake-up invulnerability. Combo scaling continues through the air sequence.
 
-NumPy, TensorFlow, and FastAPI have twelve named moves each and distinct mechanics:
+NumPy, TensorFlow, FastAPI, Pandas, PyTorch, and Requests have twelve named moves each and distinct mechanics:
 NumPy's Axis Burst fires a rising three-shot fan; TensorFlow's Gradient Slam launches
 and Layer Guard blocks/counters; FastAPI's Async Blitz/Coroutine Rush close distance
-and Coroutine Dash gives a fast invulnerable escape. Utilities require neutral or
+and Coroutine Dash gives a fast invulnerable escape. Pandas has long-range guard
+pressure and Schema Guard; PyTorch has fast projectiles and Flame Fan; Requests
+has advancing attacks and a backward Timeout Escape. Utilities require neutral or
 recovery completion; they cannot escape hit stun or stagger. The remaining roster
 uses the expanded baseline with its existing stats.
 
@@ -73,8 +99,13 @@ both machines must use this version. Ordered command history preserves direction
 inputs and cross-button order across skipped input snapshots.
 
 Full move sets for the remaining fighters, supers, and Burst remain later phases.
-LAN latency
-interpolation, prediction, and online rematches also remain future work.
+Online now uses a version handshake, validated bounded packets, a background send
+worker, retained/acknowledged ordered commands, match/round IDs, snapshot sequences,
+50 ms fighter position interpolation, ping and snapshot-age indicators, visual hit
+events, cancellable connection screens, and rematch/reselection handshakes. Both
+machines need this version. The host remains authoritative. Prediction and rollback
+remain future work; interpolation adds presentation delay rather than reducing
+remote input latency.
 
 Run the headless combat checks with:
 
@@ -82,47 +113,53 @@ Run the headless combat checks with:
 python -m unittest discover -s tests -v
 ```
 
+Additional headless checks:
+
+```bash
+python tools/benchmark.py
+python tools/balance_check.py
+python tools/online_smoke.py
+```
+
+The benchmark compares identical drawing with/without caches, not full-game FPS.
+The balance check runs 27 seeded CPU bouts across the three expanded fighter kits.
+The online smoke check runs two separate game processes through selection,
+best-of-three, rematch, and reselection using local socket pairs.
+
 ## Project structure
 
 ```text
 Jupyter/
-├── main.py
-├── requirements.txt
-├── build_windows.bat
-├── assets/
-│   ├── audio/
-│   │   ├── music/
-│   │   └── sfx/
-│   ├── fighters/
-│   ├── icon/
-│   └── ui/
-└── jupyter_game/
-    ├── __init__.py
-    ├── app.py
-    ├── config.py
-    ├── roster.py
-    ├── input_devices.py
-    ├── entities.py
-    ├── ui.py
-    ├── local_modes.py
-    └── online.py
+|-- main.py
+|-- requirements.txt
+|-- build_windows.bat
+|-- jupyter_game/
+|   |-- app.py                  # Mode selection and application flow
+|   |-- __main__.py             # python -m jupyter_game
+|   |-- core/                   # Display config, timing, preferences
+|   |-- combat/                 # Moves, entities, matches, CPU
+|   |-- data/                   # Roster and character profiles
+|   |-- input/                  # Devices and directional commands
+|   |-- audio/                  # Generated sound effects
+|   |-- ui/                     # Drawing, menus and settings screens
+|   |-- modes/                  # Local, training and online flows
+|   `-- networking/             # Protocol, transport, snapshots, interpolation
+|-- tests/
+|   |-- combat/
+|   |-- integration/
+|   `-- ui/
+|-- tools/                      # Benchmark, balance and online smoke checks
+|-- docs/
+|   |-- ARCHITECTURE.md
+|   `-- ROADMAP.md
+`-- assets/                     # Fighter, audio and interface asset directories
 ```
 
-## What each file does
+See [architecture and development guide](docs/ARCHITECTURE.md) for module
+responsibilities and focused test commands. The [roadmap](docs/ROADMAP.md)
+records completed features and later work.
 
-- `main.py` - tiny application entry point.
-- `app.py` - switches between Single Player, Local Multiplayer, Online Multiplayer, and Quit.
-- `config.py` - window, fonts, colors, FPS, and shared Pygame configuration.
-- `roster.py` - Python library fighter definitions and stats.
-- `input_devices.py` - keyboard/controller abstraction and controller detection.
-- `entities.py` - Fighter, Projectile, and Particle game objects.
-- `combat.py` - Move data, baseline/test-fighter profiles, and shared round simulation.
-- `combat_input.py` - Directional command detection and motion timing.
-- `characters.py` - NumPy, TensorFlow, and FastAPI move overrides.
-- `ui.py` - menus, character selection, HUD drawing, and shared interface helpers.
-- `local_modes.py` - single-player CPU battle and local versus battle.
-- `online.py` - LAN/direct-IP host/client networking and online battle synchronization.
-- `assets/` - reserved for future sprites, icons, sound effects, and music.
+You can also launch the game with `python -m jupyter_game`.
 
 ## Windows build
 

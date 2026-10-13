@@ -1,0 +1,1 @@
+"""Headless automated game checks."""

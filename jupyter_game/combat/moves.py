@@ -43,7 +43,7 @@ class Move:
 
 
 def moves_for(data):
-    """Migrate the roster through a baseline; tune three test fighters first."""
+    """Build a complete baseline, then apply the six bespoke fighter profiles."""
     power = data['power']
     moves = {
         'light': Move('Light', power * .65, 8, 18, 3, 5, 3, 12,
@@ -76,7 +76,7 @@ def moves_for(data):
                      free_cancel=True, cancel_after=4,
                      cancels=('heavy', 'forward_heavy', 'special', 'directional_special')),
     })
-    from .characters import tune_moves
+    from jupyter_game.data.characters import tune_moves
     moves = tune_moves(data['name'], moves)
     return moves
 

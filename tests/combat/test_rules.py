@@ -8,13 +8,13 @@ import time
 import unittest
 
 import pygame
-from jupyter_game.combat import step_battle
-from jupyter_game.entities import Fighter, Projectile
-from jupyter_game.input_devices import InputDevice
-from jupyter_game.roster import LIBRARIES
-from jupyter_game.online import (fighter_to_state, apply_fighter_state,
-                                 projectiles_to_state, apply_projectiles_state,
-                                 OnlinePeer, send_json_line)
+from jupyter_game.combat.moves import step_battle
+from jupyter_game.combat.entities import Fighter, Projectile
+from jupyter_game.input.devices import InputDevice
+from jupyter_game.data.roster import LIBRARIES
+from jupyter_game.networking.snapshots import fighter_to_state, apply_fighter_state, projectiles_to_state, apply_projectiles_state
+from jupyter_game.networking.transport import OnlinePeer
+from jupyter_game.networking.protocol import send_json_line
 
 
 class CombatTests(unittest.TestCase):

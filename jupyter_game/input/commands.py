@@ -8,8 +8,8 @@ class CommandDetector:
         self.frame = 0
         self.down_taps = []
 
-    def tick(self):
-        self.frame += 1
+    def tick(self, frames=1):
+        self.frame += frames
         self.down_taps = [f for f in self.down_taps if self.frame - f <= 18]
 
     def down_pressed(self):

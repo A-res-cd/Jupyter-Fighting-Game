@@ -6,4 +6,5 @@ build/
 dist/
 *.spec
 
-JUPYTER_CODEX_CONTEXT.md
+
+docs/
